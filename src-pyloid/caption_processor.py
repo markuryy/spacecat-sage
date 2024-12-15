@@ -55,6 +55,81 @@ class CaptionProcessor(QThread):
                 self._event_loop.close()
                 self._event_loop = None
 
+    def _construct_prompt(self, settings):
+        """Construct the prompt based on settings"""
+        prompts = settings.get('prompts', {})
+        caption_type = prompts.get('captionType', 'Descriptive')
+        caption_length = prompts.get('captionLength', 'medium-length')
+        custom_prompt = prompts.get('customPrompt', '')
+        custom_name = prompts.get('customName', '')
+        extra_options = prompts.get('extraOptions', [])
+
+        # If using custom prompt, use that directly
+        if caption_type == 'Custom/VQA':
+            final_prompt = custom_prompt or "Write a descriptive caption for this image."
+        else:
+            # Check if caption_length is a number (word count)
+            is_word_count = caption_length.isdigit()
+            
+            # Construct base prompt based on caption type
+            if caption_type == "Descriptive":
+                if is_word_count:
+                    final_prompt = f"Write a descriptive caption for this image in a formal tone within {caption_length} words."
+                else:
+                    final_prompt = f"Write a {caption_length} descriptive caption for this image in a formal tone."
+            elif caption_type == "Descriptive (Informal)":
+                if is_word_count:
+                    final_prompt = f"Write a descriptive caption for this image in a casual tone within {caption_length} words."
+                else:
+                    final_prompt = f"Write a {caption_length} descriptive caption for this image in a casual tone."
+            elif caption_type == "Training Prompt" or caption_type == "Stable Diffusion":
+                if is_word_count:
+                    final_prompt = f"Write a stable diffusion prompt for this image within {caption_length} words."
+                else:
+                    final_prompt = f"Write a {caption_length} stable diffusion prompt for this image."
+            elif caption_type == "MidJourney":
+                if is_word_count:
+                    final_prompt = f"Write a MidJourney prompt for this image within {caption_length} words."
+                else:
+                    final_prompt = f"Write a {caption_length} MidJourney prompt for this image."
+            elif caption_type == "Booru tag list":
+                if is_word_count:
+                    final_prompt = f"Write a list of Booru tags for this image within {caption_length} words."
+                else:
+                    final_prompt = f"Write a {caption_length} list of Booru tags for this image."
+            elif caption_type == "Booru-like tag list":
+                if is_word_count:
+                    final_prompt = f"Write a list of Booru-like tags for this image within {caption_length} words."
+                else:
+                    final_prompt = f"Write a {caption_length} list of Booru-like tags for this image."
+            elif caption_type == "Art Critic":
+                if is_word_count:
+                    final_prompt = f"Analyze this image like an art critic would with information about its composition, style, symbolism, the use of color, light, any artistic movement it might belong to, etc. Keep it within {caption_length} words."
+                else:
+                    final_prompt = f"Analyze this image like an art critic would with information about its composition, style, symbolism, the use of color, light, any artistic movement it might belong to, etc. Keep it {caption_length}."
+            elif caption_type == "Product Listing":
+                if is_word_count:
+                    final_prompt = f"Write a caption for this image as though it were a product listing. Keep it under {caption_length} words."
+                else:
+                    final_prompt = f"Write a {caption_length} caption for this image as though it were a product listing."
+            elif caption_type == "Social Media Post":
+                if is_word_count:
+                    final_prompt = f"Write a caption for this image as if it were being used for a social media post. Limit the caption to {caption_length} words."
+                else:
+                    final_prompt = f"Write a {caption_length} caption for this image as if it were being used for a social media post."
+            else:
+                # Default to formal descriptive
+                if is_word_count:
+                    final_prompt = f"Write a descriptive caption for this image in a formal tone within {caption_length} words."
+                else:
+                    final_prompt = f"Write a {caption_length} descriptive caption for this image in a formal tone."
+
+        # Add extra options to the prompt
+        if extra_options:
+            final_prompt += "\n\nAdditional requirements:\n" + "\n".join(f"- {option.replace('{name}', custom_name) if custom_name and '{name}' in option else option}" for option in extra_options)
+
+        return final_prompt
+
     async def _generate_caption(self):
         """Generate caption based on model type and settings"""
         try:
@@ -71,14 +146,8 @@ class CaptionProcessor(QThread):
             if not self._settings:
                 return json.dumps({"error": "No settings provided", "image_name": self._image_name})
 
-            prompts = self._settings.get('prompts', {})
-            prompt = prompts.get('customPrompt', '')
-            custom_name = prompts.get('customName')
-            extra_options = prompts.get('extraOptions', [])
-
-            # Handle custom name replacement if specified
-            if custom_name and "If there is a person/character in the image you must refer to them as {name}." in extra_options:
-                prompt = prompt.replace("{name}", custom_name)
+            # Construct the prompt using the new method
+            prompt = self._construct_prompt(self._settings)
 
             model, api_key, base_url = None, None, None
             if self._model_type == 'openai':

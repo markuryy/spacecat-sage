@@ -73,7 +73,7 @@ declare global {
       };
       FileAPI: {
         // Caption generation
-        generate_caption: (image_name: string, prompt: string, model: string) => Promise<string>;
+        generate_caption: (image_name: string) => Promise<string>;
         cancel_generation: () => Promise<string>;
         get_caption: (image_name: string) => Promise<string>;
         save_caption: (image_name: string, caption: string) => Promise<string>;
@@ -569,12 +569,9 @@ const App = () => {
       }
       
       setGenerating(true);
-      const prompt = settings.prompts.customPrompt || `Generate a ${settings.prompts.captionType} ${settings.prompts.captionLength} caption for this image.`;
       
       const response = await window.pyloid.FileAPI.generate_caption(
-        currentImage.name,
-        prompt,
-        settings.modelType === 'openai' ? settings.openai.model : settings.joycaption.model
+        currentImage.name
       );
       
       // Let the event handlers handle the response
@@ -632,13 +629,8 @@ const App = () => {
   const handleBatchProcess = async (file: FileInfo) => {
     if (!settings) return;
     try {
-      const model = settings.modelType === 'openai' ? settings.openai.model : settings.joycaption.model;
-      const prompt = settings.prompts.customPrompt || `Generate a ${settings.prompts.captionType} ${settings.prompts.captionLength} caption for this image.`;
-      
       const response = await window.pyloid.FileAPI.generate_caption(
-        file.name,
-        prompt,
-        model
+        file.name
       )
       const result = JSON.parse(response)
       

@@ -757,9 +757,9 @@ class FileAPI(PyloidAPI):
         except Exception as e:
             return json.dumps({"error": str(e)})
 
-    @Bridge(str, str, str, result=str)
-    def generate_caption(self, image_name, prompt, model):
-        """Generate caption for an image using specified model"""
+    @Bridge(str, result=str)
+    def generate_caption(self, image_name):
+        """Generate caption for an image using model from settings"""
         self.ensure_initialized()
         try:
             if not self.session_dir:
