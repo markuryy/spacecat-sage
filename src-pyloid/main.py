@@ -14,6 +14,7 @@ from path_utils import (
     get_settings_db_path
 )
 import os
+import io
 import sys
 import json
 import signal
@@ -21,6 +22,7 @@ import shutil
 import logging
 import base64
 import requests
+from PIL import Image
 from openai import OpenAI
 import sqlite3
 from contextlib import contextmanager
@@ -883,10 +885,27 @@ class FileAPI(PyloidAPI):
             # Decode base64 to binary
             image_data = base64.b64decode(base64_data)
 
-            # Save to file
+            # Load image using PIL to preserve format and metadata
+            img = Image.open(io.BytesIO(image_data))
+
+            # Determine format based on original file extension
+            original_format = os.path.splitext(image_name)[1].lower()
+            save_format = None
+            if original_format in ['.jpg', '.jpeg']:
+                save_format = 'JPEG'
+                if img.mode == 'RGBA':
+                    # Convert RGBA to RGB for JPEG
+                    img = img.convert('RGB')
+            elif original_format == '.png':
+                save_format = 'PNG'
+            else:
+                # Default to PNG for unknown formats
+                save_format = 'PNG'
+                image_name = os.path.splitext(image_name)[0] + '.png'
+
+            # Save to file with no compression
             image_path = os.path.join(self.session_dir, image_name)
-            with open(image_path, 'wb') as f:
-                f.write(image_data)
+            img.save(image_path, format=save_format, quality=100, subsampling=0)
 
             return json.dumps({
                 "success": True,
