@@ -349,18 +349,43 @@ const App = () => {
     if (!currentImage) return;
     
     try {
-      // Extract base64 data directly
+      // Debug log the data URL
+      console.log('Saving edited image for:', currentImage.name);
+      console.log('Received data URL of length:', editedDataUrl.length);
+      
+      // Extract base64 data and verify it
       const base64data = editedDataUrl.split(',')[1];
+      if (!base64data) {
+        console.error('Failed to extract base64 data from data URL');
+        toast.error('Failed to save edited image - invalid data format');
+        return;
+      }
+      console.log('Extracted base64 data of length:', base64data.length);
       
       // Save edited image to backend
+      console.log('Saving to backend...');
       const response = await window.pyloid.FileAPI.save_edited_image(currentImage.name, base64data);
+      console.log('Backend response:', response);
       const result = JSON.parse(response);
       
       if (result.error) {
         console.error('Error saving edited image:', result.error);
+        toast.error('Failed to save edited image');
       } else {
         // Update the image path immediately
         const updatedFile = { ...currentImage, path: result.path };
+        console.log('Image saved successfully, updating path to:', result.path);
+        
+        // If this is a PNG or JPEG path, ensure we're using the right extension
+        const ext = result.path.toLowerCase().split('.').pop();
+        if (['jpg', 'jpeg', 'png'].includes(ext)) {
+          // Update the cache with the new edited image data directly
+          imageCache.set(result.path, editedDataUrl);
+        } else {
+          // If it's not a recognized format, clear it from cache to force a reload
+          imageCache.delete(currentImage.path);
+          imageCache.delete(result.path);
+        }
         
         // Update all instances of this file
         setFiles(prev => prev.map(f => f.name === currentImage.name ? updatedFile : f));
@@ -368,6 +393,8 @@ const App = () => {
         setUncaptionedFiles(prev => prev.map(f => f.name === currentImage.name ? updatedFile : f));
         setCurrentImage(updatedFile);
         
+        // Show success message
+        toast.success('Image edited successfully');
         setEditorOpen(false);
       }
     } catch (error) {
@@ -679,25 +706,35 @@ const App = () => {
 
   const clearSession = async () => {
     try {
-      const response = await window.pyloid.FileAPI.clear_session()
-      const result = JSON.parse(response)
+      const response = await window.pyloid.FileAPI.clear_session();
+      const result = JSON.parse(response);
       if (result.error) {
-        console.error('Error clearing session:', result.error)
+        console.error('Error clearing session:', result.error);
         toast.error('Failed to clear session', {
           description: result.error
-        })
+        });
       } else {
-        setFiles([])
-        setSelectedFiles([])
-        setCurrentImage(null)
-        setLoadedCaption('')
-        setEditingCaption('')
+        // Clear all state
+        setFiles([]);
+        setSelectedFiles([]);
+        setCurrentImage(null);
+        setLoadedCaption('');
+        setEditingCaption('');
+        setCaptionedFiles([]);
+        setUncaptionedFiles([]);
+        setViewedCaptions(new Set());  // Also clear viewed captions state
+
+        // Clear the image cache
+        imageCache.clear();
+        console.log('Cleared image cache');
+        
+        toast.success('Session cleared successfully');
       }
     } catch (error) {
-      console.error('Error clearing session:', error)
+      console.error('Error clearing session:', error);
       toast.error('Failed to clear session', {
         description: 'An unexpected error occurred'
-      })
+      });
     }
   }
 
