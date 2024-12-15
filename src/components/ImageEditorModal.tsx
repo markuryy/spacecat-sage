@@ -30,24 +30,36 @@ const ImageEditorModal: React.FC<ImageEditorModalProps> = ({ open, onClose, src,
 
   const handleSave = () => {
     if (cropperRef.current) {
-      const canvas = cropperRef.current.getCanvas();
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          // Apply rotation and flips after cropping if needed
-          const finalCanvas = document.createElement('canvas');
-          const { width, height } = canvas;
-          finalCanvas.width = width;
-          finalCanvas.height = height;
-          const finalCtx = finalCanvas.getContext('2d');
-          if (finalCtx) {
-            finalCtx.translate(width / 2, height / 2);
-            finalCtx.rotate((rotation * Math.PI) / 180);
-            finalCtx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-            finalCtx.drawImage(canvas, -width / 2, -height / 2);
-          }
-          onSave(finalCanvas.toDataURL());
+      try {
+        // Get canvas with all transformations applied
+        const state = cropperRef.current.getState();
+        if (!state) {
+          console.error('No state available');
+          return;
         }
+        const visibleArea = state.visibleArea;
+        if (!visibleArea) {
+          console.error('No visible area available');
+          return;
+        }
+        
+        const canvas = cropperRef.current.getCanvas({
+          height: visibleArea.height,
+          width: visibleArea.width,
+          minWidth: 100,
+          minHeight: 100
+        });
+        
+        if (canvas) {
+          // Convert to PNG for better quality
+          const dataUrl = canvas.toDataURL('image/png', 1.0);
+          console.log('Generated data URL length:', dataUrl.length);
+          onSave(dataUrl);
+        } else {
+          console.error('Failed to get canvas from cropper');
+        }
+      } catch (error) {
+        console.error('Error during save:', error);
       }
     }
     onClose();
