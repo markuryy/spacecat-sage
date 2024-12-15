@@ -39,6 +39,10 @@ class ImageCache {
     return this.cache.has(key);
   }
 
+  public delete(key: string): boolean {
+    return this.cache.delete(key);
+  }
+
   public clear(): void {
     this.cache.clear();
   }
