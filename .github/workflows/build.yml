@@ -1,0 +1,158 @@
+name: build application
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            spec: ci/build-linux.spec
+            artifact_name: linux
+          - os: windows-latest
+            spec: ci/build-windows.spec
+            artifact_name: windows
+          - os: macos-latest
+            spec: ci/build-macos.spec
+            artifact_name: macos
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: setup python (macos)
+        if: runner.os == 'macOS'
+        run: |
+          brew install python@3.10
+          brew link python@3.10
+          python3.10 -m pip install -r requirements.txt
+          
+      - name: setup python (non-macos)
+        if: runner.os != 'macOS'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          
+      - name: install python requirements (non-macos)
+        if: runner.os != 'macOS'
+        run: |
+          python -m pip install -r requirements.txt
+      
+      - name: setup bun
+        uses: oven-sh/setup-bun@v2
+        
+      - name: install gettext (linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y gettext
+        
+      - name: install gettext (macos)
+        if: runner.os == 'macOS'
+        run: |
+          brew install gettext
+          brew link gettext --force
+          sudo mkdir -p /usr/local/lib
+          sudo ln -sf $(brew --prefix gettext)/lib/libintl.8.dylib /usr/local/lib/
+        
+      - name: build frontend
+        run: |
+          bun install
+          bun run tsc -b
+          bun run vite build
+      
+      - name: build macos executable
+        if: runner.os == 'macOS'
+        run: python3.10 -m PyInstaller ${{ matrix.spec }}
+
+      - name: create macos installer
+        if: runner.os == 'macOS'
+        run: |
+          npm install -g create-dmg
+          create-dmg 'dist/spacecat sage.app' dist --dmg-title='spacecat sage installer' || true
+          mv dist/spacecat*.dmg dist/spacecat_sage_installer.dmg
+
+      - name: upload macos artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spacecat sage installer macos
+          path: dist/spacecat*.dmg
+        
+      - name: build non-macos executable
+        if: runner.os != 'macOS'
+        uses: sayyid5416/pyinstaller@v1.8.0
+        with:
+          spec: ${{ matrix.spec }}
+          python_ver: '3.10'
+          requirements: requirements.txt
+          clean_checkout: false
+
+      - name: install inno setup (windows)
+        if: runner.os == 'Windows'
+        run: choco install innosetup
+
+      - name: create windows installer 
+        if: runner.os == 'Windows'
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version -replace '^v', '' -replace '-alpha$', ''
+          (Get-Content ci/installer.iss) -replace '0.0.0', $version | Set-Content ci/installer.iss
+          iscc ci/installer.iss
+
+      - name: upload windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spacecat sage installer windows
+          path: Output/spacecat_sage_installer.exe
+
+      - name: install linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse libfuse2 appstream
+
+      - name: create linux installer
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p AppDir/usr/share/applications
+          echo '[Desktop Entry]' > AppDir/usr/share/applications/spacecat-sage.desktop
+          echo 'Name=spacecat sage' >> AppDir/usr/share/applications/spacecat-sage.desktop
+          echo 'Exec=spacecat-sage' >> AppDir/usr/share/applications/spacecat-sage.desktop
+          echo 'Icon=icon-256' >> AppDir/usr/share/applications/spacecat-sage.desktop
+          echo 'Type=Application' >> AppDir/usr/share/applications/spacecat-sage.desktop
+          echo 'Categories=Utility;' >> AppDir/usr/share/applications/spacecat-sage.desktop
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+            --executable "dist/spacecat-sage/spacecat-sage" \
+            --desktop-file AppDir/usr/share/applications/spacecat-sage.desktop \
+            --icon-file src-pyloid/icons/icon-256.png \
+            -o appimage
+          mv spacecat*.AppImage spacecat_sage_installer.AppImage
+
+      - name: upload linux artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spacecat sage installer linux
+          path: spacecat*.AppImage
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: create release
+        uses: softprops/action-gh-release@v2.1.0
+        with:
+          files: artifacts/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
