@@ -11,20 +11,28 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            spec: ci/build-linux.spec
+            spec: build-linux.spec
             artifact_name: linux
           - os: windows-latest
-            spec: ci/build-windows.spec
+            spec: build-windows.spec
             artifact_name: windows
           - os: macos-latest
-            spec: ci/build-macos.spec
+            spec: build-macos.spec
             artifact_name: macos
     
     runs-on: ${{ matrix.os }}
     
     steps:
       - uses: actions/checkout@v4
+
+      - name: copy files
+        if: runner.os != 'Windows'
+        run: cp -r ci/* .
       
+      - name: copy files (windows)
+        if: runner.os == 'Windows'
+        run: xcopy ci . /E /I /Y
+
       - name: setup python (macos)
         if: runner.os == 'macOS'
         run: |
@@ -100,7 +108,7 @@ jobs:
         run: |
           $version = (Get-Content package.json | ConvertFrom-Json).version -replace '^v', '' -replace '-alpha$', ''
           (Get-Content ci/installer.iss) -replace '0.0.0', $version | Set-Content ci/installer.iss
-          iscc ci/installer.iss
+          iscc installer.iss
 
       - name: upload windows artifact
         if: runner.os == 'Windows'
