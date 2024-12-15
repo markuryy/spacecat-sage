@@ -2,9 +2,9 @@
 
 A desktop application for generating and editing image captions, with support for both OpenAI and JoyCaption.
 
-> ⚠️ **Warning:** The current releases (as of `v0.1.2-alpha`) are extremely unstable and *do* have bugs, including basic operational issues. Build from source for now.
+> ⚠️ **Warning:** The current releases (as of `v0.2.0-alpha`) are unstable and *do* have bugs.
 
-I am in the middle of a major refactor so most things are currently broken, including:
+I am in the middle of a major refactor and many things are currently broken, including:
 - [x] Session persistence
 - [ ] Image editor saving
 - [ ] Batch captioning
@@ -34,7 +34,7 @@ Current basic functionality includes:
 1.  Download the latest release or build from source (see [development docs](docs/DEVELOPMENT.md))
 2.  Configure your captioning model:
     *   For OpenAI: Add your API key
-    *   For joycaption: Set up vLLM (see [joycaption alpha two](docs/joycaption-alpha-two.md))
+    *   For JoyCaption: Set up vLLM (see [docs/joycaption-alpha-two.md](docs/joycaption-alpha-two.md))
 3.  Select your prompt (optimized for JoyCaption but allows any prompt)
 4.  Import images or a folder
 5.  Caption your images one at a time or in batches:
@@ -54,26 +54,20 @@ Current basic functionality includes:
 
 ### Installation
 
-Since the app isn't signed, I recommend you look through source code and build it on your own machine (see [development docs](docs/DEVELOPMENT.md)). *But* that's a little annoying, so I've compiled binaries for major platforms.
+Since the app isn't signed, I recommend you look through the source code and build it on your own machine (see [development docs](docs/DEVELOPMENT.md)). *But* that's a little annoying, so there are also installers for major platforms.
 
 You can download the latest release [here](https://github.com/markuryy/spacecat-sage/releases/latest) for your platform (it's built for darwin but compiled for linux and windows).
 
-#### Windows / Linux
+#### Unsigned Warnings
 
-On Linux and Windows, you can download the .zip file and extract it to your desired location. Run the executable to start the app.
-
-On windows, it's easy to bypass the prompt by clicking "run anyway":
+On Windows, it's easy to bypass the security prompt on the installer by clicking "run anyway":
 
 > Windows protected your PC
 > Microsoft Defender SmartScreen prevented an unrecognized app from starting. Running this app might put your PC at risk.
 > App: spacecat sage.exe
 > Publisher: Unknown publisher
 
-#### macOS
-
-On macOS, you can drag and drop the app to your Applications folder. 
-
-There are [a few more steps](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) to open the app:
+On macos, there are [a few more steps](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) to open the app:
 
 > Overriding security settings to open an app is the most common way that a Mac gets infected with malware.
 >
@@ -87,3 +81,11 @@ There are [a few more steps](https://support.apple.com/guide/mac-help/open-a-mac
 > 3. Enter your login password, then click OK.
 >
 > The app is saved as an exception to your security settings, and you can open it in the future by double-clicking it, just as you can for any authorized app.
+
+## License
+
+[MIT License](LICENSE.md) for **individuals only**. Contribute for *any* other use.
+
+Icon background from [@umpontoseisig](https://www.figma.com/community/file/859244909011097378)
+
+Logo by [yours truly](https://markury.dev)
