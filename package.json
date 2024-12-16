@@ -16,7 +16,9 @@
     "init": "bun install && run-script-os",
     "init:windows": "python -m venv venv-pyloid && .\\venv-pyloid\\Scripts\\pip install -r requirements.txt",
     "init:linux": "python3 -m venv venv-pyloid && ./venv-pyloid/bin/pip install -r requirements.txt",
-    "init:macos": "python3 -m venv venv-pyloid && ./venv-pyloid/bin/pip install -r requirements.txt"
+    "init:macos": "python3 -m venv venv-pyloid && ./venv-pyloid/bin/pip install -r requirements.txt",
+    "lint": "bun eslint .",
+    "lint:fix": "bun eslint . --fix"
   },
   "dependencies": {
     "@formkit/auto-animate": "^0.8.2",
