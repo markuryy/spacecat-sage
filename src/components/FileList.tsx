@@ -62,6 +62,8 @@ const ImageThumbnail: React.FC<ImageThumbnailProps> = React.memo(({ path, alt, o
       loading="lazy"
     />
   ) : null;
+}, (prevProps, nextProps) => {
+  return prevProps.path === nextProps.path && prevProps.alt === nextProps.alt;
 });
 
 interface VirtualizedContentProps {
@@ -89,7 +91,7 @@ const VirtualizedContent: React.FC<VirtualizedContentProps> = React.memo(({
       <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
         {virtualizer.getVirtualItems().map((virtualRow) => (
           <div
-            key={virtualRow.key}
+            key={items[virtualRow.index].name}
             style={{
               position: 'absolute',
               top: 0,
@@ -135,12 +137,14 @@ const FileListSection: React.FC<FileListSectionProps> = ({
 
   const renderFileItem = useCallback((file: FileInfo) => (
     <div 
+      key={file.name}
       className="h-full w-full group border-b last:border-b-0 border-neutral-800/50"
       onClick={() => onImageSelect(file)}
     >
       <div className="flex items-center gap-3 p-3 h-full hover:bg-neutral-800 cursor-pointer">
-        <div className="relative w-12 h-12">
+        <div className="relative w-12 h-12 flex-shrink-0">
           <ImageThumbnail 
+            key={file.path}
             path={file.path}
             alt={file.name}
             onClick={(e) => e.stopPropagation()}

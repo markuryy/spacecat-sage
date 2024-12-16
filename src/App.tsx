@@ -857,19 +857,22 @@ const App = () => {
   const { uncaptionedSection, captionedSection, viewedSection } = useMemo(() => {
     if (!settings) {
       return {
-        uncaptionedSection: { title: "Uncaptioned", files: [] as FileInfo[] },
-        captionedSection: { title: "Captioned", files: [] as FileInfo[] },
-        viewedSection: null as { title: string, files: FileInfo[] } | null
+        uncaptionedSection: { title: "Uncaptioned", files: [] },
+        captionedSection: { title: "Captioned", files: [] },
+        viewedSection: null
       };
     }
 
-    const uncaptioned = uncaptionedFiles;
-    let captioned = captionedFiles;
+    // Sort files by name to maintain stable order
+    const sortedFiles = [...files].sort((a, b) => a.name.localeCompare(b.name));
+    
+    const uncaptioned = sortedFiles.filter(f => uncaptionedFiles.some(uf => uf.name === f.name));
+    let captioned = sortedFiles.filter(f => captionedFiles.some(cf => cf.name === f.name));
     let viewed: FileInfo[] = [];
 
     if (settings.interface.separateViewed) {
-      viewed = captionedFiles.filter(f => viewedCaptions.has(f.name));
-      captioned = captionedFiles.filter(f => !viewedCaptions.has(f.name));
+      viewed = captioned.filter(f => viewedCaptions.has(f.name));
+      captioned = captioned.filter(f => !viewedCaptions.has(f.name));
     }
 
     return {
@@ -886,7 +889,7 @@ const App = () => {
         files: viewed,
       } : null,
     };
-  }, [uncaptionedFiles, captionedFiles, viewedCaptions, settings?.interface?.separateViewed]);
+  }, [files, uncaptionedFiles, captionedFiles, viewedCaptions, settings?.interface?.separateViewed]);
 
   useEffect(() => {
     if (addingFiles) {
