@@ -927,6 +927,65 @@ class FileAPI(PyloidAPI):
         except Exception as e:
             return json.dumps({"error": str(e)})
 
+    @Bridge(str, result=str)
+    def generate_batch_captions(self, image_names_json):
+        """Generate captions for multiple images"""
+        self.ensure_initialized()
+        try:
+            if not self.session_dir:
+                return json.dumps({"error": "No active session"})
+
+            if not self.file_processor:
+                return json.dumps({"error": "File processor not initialized"})
+
+            # Get current settings
+            settings = {}
+            try:
+                settings_result = self.get_settings()
+                settings = json.loads(settings_result)
+            except Exception as e:
+                print(f"Error loading settings: {str(e)}")
+                return json.dumps({"error": "Failed to load settings"})
+
+            # Parse image names
+            try:
+                image_names = json.loads(image_names_json)
+                if not isinstance(image_names, list):
+                    return json.dumps({"error": "Invalid image names format"})
+            except json.JSONDecodeError:
+                return json.dumps({"error": "Invalid JSON format for image names"})
+
+            def on_progress(msg):
+                try:
+                    progress_data = json.loads(msg)
+                    self.window.emit('batchProgress', progress_data)
+                except:
+                    print(f"Error parsing progress message: {msg}")
+
+            def on_result(result):
+                try:
+                    result_data = json.loads(result)
+                    self.window.emit('batchResult', result_data)
+                except:
+                    print(f"Error parsing result: {result}")
+
+            # Connect signals
+            self.file_processor.caption_processor.progress.connect(on_progress)
+            self.file_processor.caption_processor.result.connect(on_result)
+
+            # Start batch processing
+            self.file_processor.caption_processor.generate_batch_captions(
+                image_names,
+                settings['modelType'],
+                settings
+            )
+
+            return json.dumps({"status": "started", "total": len(image_names)})
+
+        except Exception as e:
+            print(f"Error starting batch generation: {str(e)}")
+            return json.dumps({"error": str(e)})
+
 ####################################################################
 
 # Create a single instance of FileAPI

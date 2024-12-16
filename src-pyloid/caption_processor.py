@@ -205,7 +205,12 @@ class CaptionProcessor(QThread):
 
                     except json.JSONDecodeError:
                         if retry_count == max_retries - 1:
-                            return json.dumps({"error": "Invalid response from model", "image_name": self._image_name})
+                            self.progress.emit(f"Failed to process {self._image_name}: Invalid response from model")
+                            return json.dumps({
+                                "error": "Invalid response from model",
+                                "image_name": self._image_name,
+                                "status": "error"
+                            })
 
                 except Exception as e:
                     last_error = str(e)
@@ -214,15 +219,19 @@ class CaptionProcessor(QThread):
                         break
                     await asyncio.sleep(1)  # Wait before retrying
 
+            self.progress.emit(f"Failed to process {self._image_name} after {max_retries} attempts")
             return json.dumps({
                 "error": f"Failed after {max_retries} attempts: {last_error}",
-                "image_name": self._image_name
+                "image_name": self._image_name,
+                "status": "error"
             })
 
         except Exception as e:
+            self.progress.emit(f"Error processing {self._image_name}: {str(e)}")
             return json.dumps({
                 "error": str(e),
-                "image_name": self._image_name
+                "image_name": self._image_name,
+                "status": "error"
             })
 
     def _is_rejection_response(self, caption):
@@ -293,7 +302,7 @@ class CaptionProcessor(QThread):
                 if response.choices and response.choices[0].message.content:
                     caption = response.choices[0].message.content
                     if self._is_rejection_response(caption):
-                        return json.dumps({"error": "Image might be corrupted or unsupported"})
+                        return json.dumps({"error": "Model politely declined the image", "image_name": self._image_name})
                     return json.dumps({"caption": caption})
                 else:
                     return json.dumps({"error": "No caption generated"})
@@ -309,3 +318,156 @@ class CaptionProcessor(QThread):
         if self._current_task and not self._current_task.done():
             self._current_task.cancel()
             self._current_task = None
+
+    def generate_batch_captions(self, image_names, model_type, settings):
+        """Generate captions for multiple images"""
+        self._model_type = model_type
+        self._settings = settings
+        results = []
+        
+        for i, image_name in enumerate(image_names):
+            try:
+                # Emit progress update before processing each image
+                self.progress.emit(json.dumps({
+                    "current": i + 1,
+                    "total": len(image_names),
+                    "processing": image_name
+                }))
+                
+                # Process the image
+                if not self._event_loop:
+                    self._event_loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(self._event_loop)
+                
+                # Generate caption
+                result = self._event_loop.run_until_complete(self._generate_caption_for_batch(image_name))
+                results.append(json.loads(result))
+                
+                # Emit another progress update after processing
+                self.progress.emit(json.dumps({
+                    "current": i + 1,
+                    "total": len(image_names),
+                    "processing": image_name
+                }))
+                
+            except asyncio.CancelledError:
+                self.result.emit(json.dumps({
+                    "type": "batch_cancelled",
+                    "processed": i
+                }))
+                return
+            except Exception as e:
+                results.append({
+                    "error": str(e),
+                    "image_name": image_name
+                })
+        
+        # Send final results
+        self.result.emit(json.dumps({
+            "type": "batch_complete",
+            "results": results
+        }))
+
+    async def _generate_caption_for_batch(self, image_name):
+        """Modified version of _generate_caption for batch processing"""
+        try:
+            if not self.session_dir:
+                return json.dumps({"error": "No active session", "image_name": image_name})
+
+            if not image_name:
+                return json.dumps({"error": "No image name provided", "image_name": image_name})
+
+            image_path = os.path.join(self.session_dir, image_name)
+            if not os.path.exists(image_path) or not os.path.isfile(image_path):
+                return json.dumps({"error": f"Image file not found: {image_path}", "image_name": image_name})
+
+            if not self._settings:
+                return json.dumps({"error": "No settings provided", "image_name": image_name})
+
+            # Construct the prompt using the new method
+            prompt = self._construct_prompt(self._settings)
+
+            model, api_key, base_url = None, None, None
+            if self._model_type == 'openai':
+                openai_settings = self._settings.get('openai', {})
+                model = openai_settings.get('model', "gpt-4o")
+                api_key = openai_settings.get('apiKey') or self.api_key
+            else:  # vLLM
+                vllm_settings = self._settings.get('joycaption', {})
+                model = vllm_settings.get('model', 'llama-joycaption-alpha-two-hf-llava')
+                api_key = vllm_settings.get('apiKey')
+                base_url = vllm_settings.get('baseUrl')
+                if not base_url:
+                    return json.dumps({"error": "vLLM base URL not set", "image_name": image_name})
+
+            if not api_key:
+                return json.dumps({"error": "API key not set", "image_name": image_name})
+
+            if not model:
+                return json.dumps({"error": "Model not specified", "image_name": image_name})
+
+            max_retries = 3
+            retry_count = 0
+            last_error = None
+
+            while retry_count < max_retries:
+                try:
+                    result = await self._generate_caption_with_openai_sdk(
+                        image_path,
+                        prompt,
+                        model,
+                        api_key,
+                        base_url
+                    )
+
+                    try:
+                        result_data = json.loads(result)
+                        if 'caption' in result_data:
+                            caption = result_data['caption']
+                            if not self._is_rejection_response(caption):
+                                # Save caption to database
+                                db_path = os.path.join(self.session_dir, 'captions.db')
+                                with sqlite3.connect(db_path) as conn:
+                                    conn.execute("""
+                                        INSERT OR REPLACE INTO captions (image_name, caption, updated_at)
+                                        VALUES (?, ?, CURRENT_TIMESTAMP)
+                                    """, (image_name, caption))
+                                    conn.commit()
+
+                                # Return both caption and image name
+                                return json.dumps({
+                                    "caption": caption,
+                                    "image_name": image_name,
+                                    "status": "success"
+                                })
+
+                    except json.JSONDecodeError:
+                        if retry_count == max_retries - 1:
+                            self.progress.emit(f"Failed to process {image_name}: Invalid response from model")
+                            return json.dumps({
+                                "error": "Invalid response from model",
+                                "image_name": image_name,
+                                "status": "error"
+                            })
+
+                except Exception as e:
+                    last_error = str(e)
+                    retry_count += 1
+                    if retry_count >= max_retries:
+                        break
+                    await asyncio.sleep(1)  # Wait before retrying
+
+            self.progress.emit(f"Failed to process {image_name} after {max_retries} attempts")
+            return json.dumps({
+                "error": f"Failed after {max_retries} attempts: {last_error}",
+                "image_name": image_name,
+                "status": "error"
+            })
+
+        except Exception as e:
+            self.progress.emit(f"Error processing {image_name}: {str(e)}")
+            return json.dumps({
+                "error": str(e),
+                "image_name": image_name,
+                "status": "error"
+            })

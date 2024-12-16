@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, ChevronDown, CheckCircle2 } from 'lucide-react';
@@ -65,80 +65,68 @@ const ImageThumbnail: React.FC<ImageThumbnailProps> = React.memo(({ path, alt, o
 });
 
 interface VirtualizedContentProps {
-  files: FileInfo[];
-  selectedFiles: string[];
-  viewedCaptions?: Set<string>;
-  onFileSelect: (file: FileInfo, checked: boolean) => void;
-  onImageSelect: (file: FileInfo) => void;
+  items: any[];
+  renderItem: (item: any, index: number) => React.ReactNode;
+  itemHeight: number;
 }
 
 const VirtualizedContent: React.FC<VirtualizedContentProps> = ({
-  files,
-  selectedFiles,
-  viewedCaptions,
-  onFileSelect,
-  onImageSelect,
+  items,
+  renderItem,
+  itemHeight
 }) => {
-  const parentRef = useRef<HTMLDivElement>(null);
-  
-  const rowVirtualizer = useVirtualizer({
-    count: files.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 72,
-    overscan: 5,
-  });
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [clientHeight, setClientHeight] = useState(0);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          setClientHeight(entry.contentRect.height);
+        }
+      });
+
+      resizeObserver.observe(containerRef.current);
+      return () => resizeObserver.disconnect();
+    }
+  }, []);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  }, []);
+
+  const totalHeight = items.length * itemHeight;
+  const startIndex = Math.floor(scrollTop / itemHeight);
+  const endIndex = Math.min(
+    startIndex + Math.ceil(clientHeight / itemHeight) + 1,
+    items.length
+  );
+
+  const visibleItems = items.slice(startIndex, endIndex);
+  const offsetY = startIndex * itemHeight;
 
   return (
-    <div ref={parentRef} className="max-h-[240px] overflow-auto">
-      <div
-        style={{
-          height: `${rowVirtualizer.getTotalSize()}px`,
-          width: '100%',
-          position: 'relative',
-        }}
-      >
-        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-          const file = files[virtualRow.index];
+    <div
+      ref={containerRef}
+      className="h-full overflow-y-auto"
+      onScroll={handleScroll}
+    >
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        {visibleItems.map((item, localIndex) => {
+          const top = (startIndex + localIndex) * itemHeight;
           return (
-            <div
-              key={file.name}
-              className="absolute top-0 left-0 w-full group border-b last:border-b-0 border-neutral-800/50"
+            <div 
+              key={`${item.name}-${startIndex + localIndex}`}
               style={{
-                height: `${virtualRow.size}px`,
-                transform: `translateY(${virtualRow.start}px)`,
+                position: 'absolute',
+                top,
+                left: 0,
+                width: '100%',
+                height: itemHeight
               }}
             >
-              <div 
-                className="flex items-center gap-3 p-3 hover:bg-neutral-800 cursor-pointer"
-                onClick={() => onImageSelect(file)}
-              >
-                <div className="relative w-12 h-12">
-                  <ImageThumbnail 
-                    path={file.path}
-                    alt={file.name}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <div className="absolute top-0 left-0 p-1">
-                    <Checkbox 
-                      checked={selectedFiles.includes(file.name)}
-                      onCheckedChange={(checked) => {
-                        onFileSelect(file, checked as boolean);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="bg-neutral-700/50 border-neutral-600 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                    />
-                  </div>
-                </div>
-                <div className="flex-1 min-w-0 space-y-1">
-                  <div className="text-sm truncate">{file.name}</div>
-                  {viewedCaptions?.has(file.name) && (
-                    <div className="flex items-center gap-1 text-xs text-green-500">
-                      <CheckCircle2 className="w-3 h-3" />
-                      <span>Viewed</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+              {renderItem(item, startIndex + localIndex)}
             </div>
           );
         })}
@@ -173,9 +161,48 @@ const FileListSection: React.FC<FileListSectionProps> = ({
 }) => {
   const allSelected = files.length > 0 && files.every(f => selectedFiles.includes(f.name));
 
+  const renderFileItem = useCallback((file: FileInfo, index: number) => (
+    <div 
+      className="h-full w-full group border-b last:border-b-0 border-neutral-800/50"
+      onClick={() => onImageSelect(file)}
+    >
+      <div className="flex items-center gap-3 p-3 h-full hover:bg-neutral-800 cursor-pointer">
+        <div className="relative w-12 h-12">
+          <ImageThumbnail 
+            path={file.path}
+            alt={file.name}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div className="absolute top-0 left-0 p-1">
+            <Checkbox 
+              checked={selectedFiles.includes(file.name)}
+              onCheckedChange={(checked) => {
+                onFileSelect(file, checked as boolean);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-neutral-700/50 border-neutral-600 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+            />
+          </div>
+        </div>
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="text-sm truncate">{file.name}</div>
+          {viewedCaptions?.has(file.name) && (
+            <div className="flex items-center gap-1 text-xs text-green-500">
+              <CheckCircle2 className="w-3 h-3" />
+              <span>Viewed</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  ), [selectedFiles, onFileSelect, onImageSelect, viewedCaptions]);
+
   return (
-    <Collapsible defaultOpen={defaultOpen} className={!isLastSection ? "border-b border-neutral-800" : ""}>
-      <CollapsibleTrigger className="w-full">
+    <Collapsible 
+      defaultOpen={defaultOpen} 
+      className={`flex flex-col ${!isLastSection ? "border-b border-neutral-800" : ""}`}
+    >
+      <CollapsibleTrigger className="w-full flex-shrink-0">
         <div className="flex items-center justify-between w-full py-2 px-3 hover:bg-neutral-800 cursor-pointer">
           <div className="flex items-center gap-3">
             <div onClick={(e) => e.stopPropagation()}>
@@ -194,14 +221,14 @@ const FileListSection: React.FC<FileListSectionProps> = ({
           <ChevronDown className="w-4 h-4 text-neutral-400 transition-transform duration-200 ease-in-out data-[state=open]:rotate-180" />
         </div>
       </CollapsibleTrigger>
-      <CollapsibleContent>
-        <VirtualizedContent
-          files={files}
-          selectedFiles={selectedFiles}
-          viewedCaptions={viewedCaptions}
-          onFileSelect={onFileSelect}
-          onImageSelect={onImageSelect}
-        />
+      <CollapsibleContent className="flex-1 min-h-0">
+        <div className="h-[240px]">
+          <VirtualizedContent
+            items={files}
+            renderItem={renderFileItem}
+            itemHeight={72}
+          />
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );

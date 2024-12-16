@@ -35,12 +35,7 @@ import {
 import ImageEditorModal from '@/components/ImageEditorModal';
 import FileListSection from '@/components/FileList';
 import { imageCache } from './utils/imageCache';
-
-interface FileInfo {
-  name: string
-  path: string
-  size: number
-}
+import { FileInfo } from './types/caption';
 
 interface Settings {
   modelType: 'openai' | 'joycaption-api' | 'joycaption-local'
@@ -70,10 +65,12 @@ declare global {
     pyloid: {
       EventAPI: {
         listen: (event: string, callback: (data: any) => void) => void;
+        unlisten: (event: string) => void;
       };
       FileAPI: {
         // Caption generation
         generate_caption: (image_name: string) => Promise<string>;
+        generate_batch_captions: (image_names: string) => Promise<string>;
         cancel_generation: () => Promise<string>;
         get_caption: (image_name: string) => Promise<string>;
         save_caption: (image_name: string, caption: string) => Promise<string>;
@@ -592,14 +589,16 @@ const App = () => {
       return;
     }
 
-    // If there are selected files, show batch modal
+    // If there are selected files, open batch modal
     if (selectedFiles.length > 0) {
       setModalOpen(true);
       return;
     }
 
-    // Otherwise generate caption for current image
-    generateCaption();
+    // Only generate for current image
+    if (currentImage) {
+      generateCaption();
+    }
   };
 
   // Handle cancelling caption generation
@@ -625,30 +624,29 @@ const App = () => {
     }
   };
 
-  // Handle batch processing
-  const handleBatchProcess = async (file: FileInfo) => {
-    if (!settings) return;
-    try {
-      const response = await window.pyloid.FileAPI.generate_caption(
-        file.name
-      )
-      const result = JSON.parse(response)
-      
-      if (result.error) {
-        console.error('Error generating caption:', result.error)
-        toast.error('Failed to generate caption', {
-          description: result.error
+  // Handle modal close
+  const handleBatchModalClose = () => {
+    setModalOpen(false);
+    
+    // If we have a current image, refresh its caption
+    if (currentImage) {
+      window.pyloid.FileAPI.get_caption(currentImage.name)
+        .then(response => {
+          const result = JSON.parse(response);
+          if (result.caption !== undefined) {
+            setLoadedCaption(result.caption);
+            setEditingCaption(result.caption);
+          }
         })
-      } else if (result.caption) {
-        await window.pyloid.FileAPI.save_caption(file.name, result.caption)
-      }
-    } catch (error) {
-      console.error('Error in batch processing:', error)
-      toast.error('Failed to process batch', {
-        description: 'An unexpected error occurred'
-      })
-      throw error // Re-throw to show progress failure
+        .catch(error => {
+          console.error('Error refreshing caption:', error);
+        });
     }
+    
+    // Clear selected files after a short delay
+    setTimeout(() => {
+      setSelectedFiles([]);
+    }, 500);
   };
 
   // Export session to directory
@@ -686,7 +684,7 @@ const App = () => {
         })
       } else {
         console.log('Session exported successfully')
-        toast.error('Session exported successfully')
+        toast.success('Session exported successfully')
       }
     } catch (error) {
       console.error('Error exporting session:', error)
@@ -731,94 +729,98 @@ const App = () => {
   }
 
   useEffect(() => {
-    let lastToastTime = 0;
-    const TOAST_DEBOUNCE_MS = 1000; // Prevent duplicate toasts within 1 second
+    if (!window.pyloid?.EventAPI) return;
 
-    const showToastDebounced = (message: string, type: 'success' | 'error' | 'loading') => {
-      const now = Date.now();
-      if (now - lastToastTime > TOAST_DEBOUNCE_MS) {
-        lastToastTime = now;
+    const handleToast = (data: { message: string; type: 'error' | 'loading' }) => {
+      if (data.type === 'error') {
         if (loadingToastId.current) {
           toast.dismiss(loadingToastId.current);
           loadingToastId.current = null;
         }
-        
-        switch (type) {
-          case 'success':
-            toast.error(message, { duration: 3000 });
-            break;
-          case 'error':
-            toast.error(message, { duration: 3000 });
-            break;
-          case 'loading':
-            loadingToastId.current = toast.loading(message, { duration: 3000 });
-            break;
+        toast.error(data.message);
+      }
+    };
+
+    const handleCaptionResult = (result: {
+      caption?: string;
+      error?: string;
+      image_name?: string;
+      status?: string;
+    }) => {
+      if (!result.image_name) return;
+
+      if (result.error) {
+        toast.error(`Failed to process ${result.image_name}: ${result.error}`);
+        if (currentImage?.name === result.image_name) {
+          setGenerating(false);
+        }
+      } else if (result.caption) {
+        // Update caption for the current image if it matches
+        if (currentImage?.name === result.image_name) {
+          setEditingCaption(result.caption);
+          setLoadedCaption(result.caption);
+          setGenerating(false);
+        }
+
+        // Find the existing file
+        const existingFile = files.find(f => f.name === result.image_name);
+        if (!existingFile) return;
+
+        // Create updated file object
+        const updatedFile = { ...existingFile, hasCaption: true };
+
+        // Update all file lists atomically
+        setFiles(prev => prev.map(f => 
+          f.name === result.image_name ? updatedFile : f
+        ));
+
+        setCaptionedFiles(prev => {
+          const exists = prev.some(f => f.name === result.image_name);
+          if (!exists) {
+            return [...prev, updatedFile];
+          }
+          return prev.map(f => 
+            f.name === result.image_name ? updatedFile : f
+          );
+        });
+
+        setUncaptionedFiles(prev => 
+          prev.filter(f => f.name !== result.image_name)
+        );
+
+        // Refresh the caption for the current image after batch processing
+        if (currentImage?.name === result.image_name) {
+          // Fetch the latest caption from the backend
+          window.pyloid.FileAPI.get_caption(result.image_name)
+            .then(response => {
+              const captionResult = JSON.parse(response);
+              if (captionResult.caption !== undefined) {
+                setLoadedCaption(captionResult.caption);
+                setEditingCaption(captionResult.caption);
+              }
+            })
+            .catch(error => {
+              console.error('Error refreshing caption:', error);
+            });
         }
       }
     };
 
-    if (window.pyloid?.EventAPI) {
-      console.log('Setting up event listeners');
-      window.pyloid.EventAPI.listen('showToast', (data: { message: string, type: 'success' | 'error' | 'loading' }) => {
-        showToastDebounced(data.message, data.type);
-      });
+    // Set up event listeners
+    window.pyloid.EventAPI.listen('showToast', handleToast);
+    window.pyloid.EventAPI.listen('handleCaptionResult', handleCaptionResult);
 
-      window.pyloid.EventAPI.listen('handleCaptionResult', (result: { caption?: string, error?: string }) => {
-        if (result.error) {
-          showToastDebounced(result.error, 'error');
-        } else if (result.caption) {
-          // Update the caption text immediately
-          setEditingCaption(result.caption);
-          setLoadedCaption(result.caption);
-          handleCaptionResult(result);
-        }
-        setGenerating(false);
-      });
-    }
-
+    // Cleanup
     return () => {
+      window.pyloid.EventAPI.unlisten('showToast');
+      window.pyloid.EventAPI.unlisten('handleCaptionResult');
+
       if (loadingToastId.current) {
         toast.dismiss(loadingToastId.current);
         loadingToastId.current = null;
       }
     };
-  }, []);
-
-  // Handle caption generation result
-  const handleCaptionResult = useCallback(async (result: any) => {
-    if (result.error) {
-      console.error('Error generating caption:', result.error)
-      toast.error('Failed to generate caption', {
-        description: result.error
-      })
-      return
-    }
-
-    const { caption, image_name } = result
-    if (!caption || !image_name) {
-      console.error('Invalid caption result:', result)
-      return
-    }
-
-    // Always update caption state for the current image
-    if (currentImage?.name === image_name) {
-      setEditingCaption(caption)
-      setLoadedCaption(caption)
-    }
-      
-    // Update file metadata in all lists
-    const updateFileInList = (list: FileInfo[]) => 
-      list.map(f => f.name === image_name ? { ...f, hasCaption: true } : f)
-    
-    setFiles(prev => updateFileInList(prev))
-    setCaptionedFiles(prev => updateFileInList(prev))
-    setUncaptionedFiles(prev => prev.filter(f => f.name !== image_name))
-    
-    if (currentImage?.name === image_name) {
-      setCurrentImage(prev => prev ? { ...prev, hasCaption: true } : prev)
-    }
-
-  }, [currentImage])
+  }, [currentImage, files]);
 
   const handleSettingsChange = async (newSettings: Settings) => {
     setSettings(newSettings);
@@ -934,6 +936,24 @@ const App = () => {
       </div>
     </div>
   );
+
+  const getDisplayName = (currentImage: FileInfo | null) => {
+    if (!currentImage?.name) return '';
+    
+    const name = currentImage.name;
+    const lastDotIndex = name.lastIndexOf(".");
+    
+    if (lastDotIndex === -1) return name;
+
+    const nameWithoutExt = name.slice(0, lastDotIndex);
+    const ext = name.slice(lastDotIndex);
+
+    if (nameWithoutExt.length <= 20) return name;
+
+    const start = nameWithoutExt.slice(0, 12);
+    const end = nameWithoutExt.slice(-5);
+    return `${start}...${end}${ext}`;
+  };
 
   if (settings === null) {
     return (
@@ -1060,8 +1080,8 @@ const App = () => {
       {/* Main content */}
       <div className="flex-1 flex min-h-0">
         {/* Sidebar */}
-        <div className="w-72 border-r border-neutral-800 flex flex-col">
-          <div className="p-3 border-b border-neutral-800 space-y-3">
+        <div className="w-72 border-r border-neutral-800 flex flex-col overflow-hidden">
+          <div className="p-3 border-b border-neutral-800 space-y-3 flex-shrink-0">
             <div className="flex flex-col gap-2">
               <TooltipProvider>
                 <Tooltip>
@@ -1167,7 +1187,7 @@ const App = () => {
         </div>
 
         {/* Main content area */}
-        <div className="flex-1 p-6 flex flex-col items-center justify-center">
+        <div className="flex-1 p-6 flex flex-col items-center justify-center overflow-y-auto">
           {currentImage ? (
             <>
               <div className="flex-1 min-h-0 flex flex-col items-center max-w-[600px] w-full">
@@ -1216,20 +1236,7 @@ const App = () => {
                 <div className="w-full space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-mono truncate max-w-[60%] flex">
-                      {(() => {
-                        const name = currentImage.name;
-                        const lastDotIndex = name.lastIndexOf(".");
-                        if (lastDotIndex === -1) return name;
-
-                        const nameWithoutExt = name.slice(0, lastDotIndex);
-                        const ext = name.slice(lastDotIndex);
-
-                        if (nameWithoutExt.length <= 20) return name;
-
-                        const start = nameWithoutExt.slice(0, 12);
-                        const end = nameWithoutExt.slice(-5);
-                        return `${start}...${end}${ext}`;
-                      })()}
+                      {getDisplayName(currentImage)}
                     </span>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <TooltipProvider>
@@ -1330,8 +1337,7 @@ const App = () => {
 
       <BatchModal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        onProcess={handleBatchProcess}
+        onClose={handleBatchModalClose}
         selectedFiles={files.filter((file) =>
           selectedFiles.includes(file.name)
         )}
