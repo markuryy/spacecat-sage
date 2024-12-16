@@ -777,31 +777,74 @@ class FileAPI(PyloidAPI):
                 print(f"Error loading settings: {str(e)}")
                 return json.dumps({"error": "Failed to load settings"})
 
-            # Track last progress update to prevent spamming
-            last_progress_time = [0]
-            min_progress_interval = 1.0  # seconds
-
             def on_progress(msg):
-                current_time = time.time()
-                if current_time - last_progress_time[0] >= min_progress_interval:
-                    print(f"Progress: {msg}")
-                    self.window.emit('showToast', {'message': msg, 'type': 'loading'})
-                    last_progress_time[0] = int(current_time)
+                print(f"Progress: {msg}")
+                self.window.emit('showToast', {'message': msg, 'type': 'loading'})
 
             def on_result(result):
                 print(f"Caption result: {result}")
-                # Let frontend handle saving and UI updates
                 self.window.emit('handleCaptionResult', result)
 
-            self.file_processor.caption_processor.progress.connect(on_progress)
-            self.file_processor.caption_processor.result.connect(on_result)
-
             # Start async caption generation
-            self.file_processor.caption_processor.generate_caption_async(image_name, settings['modelType'], settings)
+            self.file_processor.caption_processor.generate_caption_async(
+                image_name,
+                settings,
+                progress_callback=on_progress,
+                result_callback=on_result
+            )
+            
             return json.dumps({"status": "started"})
 
         except Exception as e:
             print(f"Error starting caption generation: {str(e)}")
+            return json.dumps({"error": str(e)})
+
+    @Bridge(str, result=str)
+    def generate_batch_captions(self, image_names_json):
+        """Generate captions for multiple images"""
+        self.ensure_initialized()
+        try:
+            if not self.session_dir:
+                return json.dumps({"error": "No active session"})
+
+            if not self.file_processor:
+                return json.dumps({"error": "File processor not initialized"})
+
+            # Get current settings
+            settings = {}
+            try:
+                settings_result = self.get_settings()
+                settings = json.loads(settings_result)
+            except Exception as e:
+                print(f"Error loading settings: {str(e)}")
+                return json.dumps({"error": "Failed to load settings"})
+
+            # Parse image names
+            try:
+                image_names = json.loads(image_names_json)
+                if not isinstance(image_names, list):
+                    return json.dumps({"error": "Invalid image names format"})
+            except json.JSONDecodeError:
+                return json.dumps({"error": "Invalid JSON format for image names"})
+
+            # Setup batch worker
+            batch_worker = self.file_processor.caption_processor.generate_batch_captions(
+                image_names,
+                settings
+            )
+
+            # Connect signals
+            batch_worker.progress.connect(
+                lambda data: self.window.emit('batchProgress', data)
+            )
+            batch_worker.result.connect(
+                lambda data: self.window.emit('batchResult', data)
+            )
+
+            return json.dumps({"status": "started", "total": len(image_names)})
+
+        except Exception as e:
+            print(f"Error starting batch generation: {str(e)}")
             return json.dumps({"error": str(e)})
 
     @Bridge(result=str)
@@ -925,65 +968,6 @@ class FileAPI(PyloidAPI):
                 captions = {row['image_name']: row['caption'] for row in cursor}
                 return json.dumps({"captions": captions})
         except Exception as e:
-            return json.dumps({"error": str(e)})
-
-    @Bridge(str, result=str)
-    def generate_batch_captions(self, image_names_json):
-        """Generate captions for multiple images"""
-        self.ensure_initialized()
-        try:
-            if not self.session_dir:
-                return json.dumps({"error": "No active session"})
-
-            if not self.file_processor:
-                return json.dumps({"error": "File processor not initialized"})
-
-            # Get current settings
-            settings = {}
-            try:
-                settings_result = self.get_settings()
-                settings = json.loads(settings_result)
-            except Exception as e:
-                print(f"Error loading settings: {str(e)}")
-                return json.dumps({"error": "Failed to load settings"})
-
-            # Parse image names
-            try:
-                image_names = json.loads(image_names_json)
-                if not isinstance(image_names, list):
-                    return json.dumps({"error": "Invalid image names format"})
-            except json.JSONDecodeError:
-                return json.dumps({"error": "Invalid JSON format for image names"})
-
-            def on_progress(msg):
-                try:
-                    progress_data = json.loads(msg)
-                    self.window.emit('batchProgress', progress_data)
-                except:
-                    print(f"Error parsing progress message: {msg}")
-
-            def on_result(result):
-                try:
-                    result_data = json.loads(result)
-                    self.window.emit('batchResult', result_data)
-                except:
-                    print(f"Error parsing result: {result}")
-
-            # Connect signals
-            self.file_processor.caption_processor.progress.connect(on_progress)
-            self.file_processor.caption_processor.result.connect(on_result)
-
-            # Start batch processing
-            self.file_processor.caption_processor.generate_batch_captions(
-                image_names,
-                settings['modelType'],
-                settings
-            )
-
-            return json.dumps({"status": "started", "total": len(image_names)})
-
-        except Exception as e:
-            print(f"Error starting batch generation: {str(e)}")
             return json.dumps({"error": str(e)})
 
 ####################################################################
