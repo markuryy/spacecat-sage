@@ -1,5 +1,4 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, ChevronDown, CheckCircle2 } from 'lucide-react';
 import {
@@ -8,6 +7,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { imageCache } from '../utils/imageCache';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 interface FileInfo {
   name: string;
@@ -66,74 +66,46 @@ const ImageThumbnail: React.FC<ImageThumbnailProps> = React.memo(({ path, alt, o
 
 interface VirtualizedContentProps {
   items: any[];
-  renderItem: (item: any, index: number) => React.ReactNode;
+  renderItem: (item: any) => React.ReactNode;
   itemHeight: number;
 }
 
-const VirtualizedContent: React.FC<VirtualizedContentProps> = ({
+const VirtualizedContent: React.FC<VirtualizedContentProps> = React.memo(({
   items,
   renderItem,
   itemHeight
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [clientHeight, setClientHeight] = useState(0);
-
-  useEffect(() => {
-    if (containerRef.current) {
-      const resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          setClientHeight(entry.contentRect.height);
-        }
-      });
-
-      resizeObserver.observe(containerRef.current);
-      return () => resizeObserver.disconnect();
-    }
-  }, []);
-
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop(e.currentTarget.scrollTop);
-  }, []);
-
-  const totalHeight = items.length * itemHeight;
-  const startIndex = Math.floor(scrollTop / itemHeight);
-  const endIndex = Math.min(
-    startIndex + Math.ceil(clientHeight / itemHeight) + 1,
-    items.length
-  );
-
-  const visibleItems = items.slice(startIndex, endIndex);
-  const offsetY = startIndex * itemHeight;
+  const parentRef = useRef<HTMLDivElement>(null);
+  
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => itemHeight,
+    overscan: 5,
+  });
 
   return (
-    <div
-      ref={containerRef}
-      className="h-full overflow-y-auto"
-      onScroll={handleScroll}
-    >
-      <div style={{ height: totalHeight, position: 'relative' }}>
-        {visibleItems.map((item, localIndex) => {
-          const top = (startIndex + localIndex) * itemHeight;
-          return (
-            <div 
-              key={`${item.name}-${startIndex + localIndex}`}
-              style={{
-                position: 'absolute',
-                top,
-                left: 0,
-                width: '100%',
-                height: itemHeight
-              }}
-            >
-              {renderItem(item, startIndex + localIndex)}
-            </div>
-          );
-        })}
+    <div ref={parentRef} className="h-full overflow-y-auto">
+      <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
+        {virtualizer.getVirtualItems().map((virtualRow) => (
+          <div
+            key={virtualRow.key}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: `${virtualRow.size}px`,
+              transform: `translateY(${virtualRow.start}px)`,
+            }}
+          >
+            {renderItem(items[virtualRow.index])}
+          </div>
+        ))}
       </div>
     </div>
   );
-};
+});
 
 interface FileListSectionProps {
   title: string;
@@ -161,7 +133,7 @@ const FileListSection: React.FC<FileListSectionProps> = ({
 }) => {
   const allSelected = files.length > 0 && files.every(f => selectedFiles.includes(f.name));
 
-  const renderFileItem = useCallback((file: FileInfo, index: number) => (
+  const renderFileItem = useCallback((file: FileInfo) => (
     <div 
       className="h-full w-full group border-b last:border-b-0 border-neutral-800/50"
       onClick={() => onImageSelect(file)}
