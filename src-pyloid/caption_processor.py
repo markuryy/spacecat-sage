@@ -219,73 +219,54 @@ class CaptionProcessor:
 
     async def _generate_caption(self, image_name: str, settings: Dict[str, Any]) -> Dict[str, Any]:
         """Generate caption for a single image"""
-        print(f"_generate_caption: Starting for {image_name}")
         try:
             if not self.session_dir:
-                print("_generate_caption: No active session")
                 return {"error": "No active session", "image_name": image_name, "status": "error"}
 
             image_path = os.path.join(self.session_dir, image_name)
-            print(f"_generate_caption: Checking image path: {image_path}")
             if not os.path.exists(image_path):
-                print(f"_generate_caption: Image not found at {image_path}")
                 return {"error": f"Image not found: {image_path}", "image_name": image_name, "status": "error"}
 
             # Get API settings
-            print("_generate_caption: Getting API settings")
             model_type = settings.get('modelType', 'openai')
             if model_type == 'openai':
                 api_settings = settings.get('openai', {})
                 model = api_settings.get('model', 'gpt-4-vision-preview')
                 api_key = api_settings.get('apiKey')
                 base_url = None
-                print(f"_generate_caption: Using OpenAI model: {model}")
             else:  # vllm/joycaption
                 api_settings = settings.get('joycaption', {})
                 model = api_settings.get('model', 'llama-joycaption-alpha-two-hf-llava')
                 api_key = api_settings.get('apiKey')
                 base_url = api_settings.get('baseUrl')
-                print(f"_generate_caption: Using vLLM model: {model}")
                 if not base_url:
-                    print("_generate_caption: vLLM base URL not set")
                     return {"error": "vLLM base URL not set", "image_name": image_name, "status": "error"}
 
             if not api_key:
-                print("_generate_caption: API key not set")
                 return {"error": "API key not set", "image_name": image_name, "status": "error"}
 
             # Construct prompt
-            print("_generate_caption: Constructing prompt")
             prompt = self._construct_prompt(settings)
-            print(f"_generate_caption: Prompt constructed: {prompt[:50]}...")
 
             # Read and encode image
-            print(f"_generate_caption: Reading image file: {image_path}")
             try:
                 with open(image_path, "rb") as img_file:
                     image_data = img_file.read()
                     if not image_data:
-                        print("_generate_caption: Empty image file")
                         return {"error": "Empty image file", "image_name": image_name, "status": "error"}
-                    print(f"_generate_caption: Successfully read image data ({len(image_data)} bytes)")
             except Exception as e:
-                print(f"_generate_caption: Error reading image file: {str(e)}")
                 return {"error": f"Error reading image: {str(e)}", "image_name": image_name, "status": "error"}
 
             # Initialize API client
-            print("_generate_caption: Initializing API client")
             try:
                 client = AsyncOpenAI(
                     api_key=api_key,
                     base_url=base_url if base_url else "https://api.openai.com/v1"
                 )
-                print("_generate_caption: API client initialized")
             except Exception as e:
-                print(f"_generate_caption: Error initializing API client: {str(e)}")
                 return {"error": f"API client error: {str(e)}", "image_name": image_name, "status": "error"}
 
             # Create message payload
-            print("_generate_caption: Creating message payload")
             try:
                 base64_image = base64.b64encode(image_data).decode('utf-8')
                 messages: List[ChatCompletionMessageParam] = [{
@@ -300,27 +281,21 @@ class CaptionProcessor:
                         }
                     ]
                 }]
-                print("_generate_caption: Message payload created")
             except Exception as e:
-                print(f"_generate_caption: Error creating message payload: {str(e)}")
                 return {"error": f"Message payload error: {str(e)}", "image_name": image_name, "status": "error"}
 
             # Make API call
-            print("_generate_caption: Making API call")
             try:
                 response = await client.chat.completions.create(
                     model=model,
                     messages=messages,
                     max_tokens=500
                 )
-                print("_generate_caption: API call completed successfully")
 
                 if response.choices and response.choices[0].message.content:
                     caption = response.choices[0].message.content.strip()
-                    print(f"_generate_caption: Caption generated: {caption[:50]}...")
                     
                     # Save to database
-                    print("_generate_caption: Saving to database")
                     try:
                         with self.get_db() as conn:
                             conn.execute("""
@@ -328,10 +303,9 @@ class CaptionProcessor:
                                 VALUES (?, ?, CURRENT_TIMESTAMP)
                             """, (image_name, caption))
                             conn.commit()
-                        print("_generate_caption: Successfully saved to database")
                     except Exception as e:
-                        print(f"_generate_caption: Database error: {str(e)}")
                         # Continue even if database save fails
+                        pass
                     
                     return {
                         "caption": caption,
@@ -339,23 +313,18 @@ class CaptionProcessor:
                         "status": "success"
                     }
                 else:
-                    print("_generate_caption: No caption generated from API response")
                     return {"error": "No caption generated", "image_name": image_name, "status": "error"}
 
             except Exception as e:
-                print(f"_generate_caption: API call error: {str(e)}")
                 return {"error": str(e), "image_name": image_name, "status": "error"}
 
         except Exception as e:
-            print(f"_generate_caption: Unexpected error: {str(e)}")
             return {"error": str(e), "image_name": image_name, "status": "error"}
 
     def generate_caption_async(self, image_name: str, settings: Dict[str, Any], 
                              progress_callback: Callable[[str], None], 
                              result_callback: Callable[[str], None]) -> None:
         """Start async caption generation for a single image using batch worker"""
-        print("Starting single caption generation (via batch worker)...")
-        
         # Only clean up batch worker if it exists
         if self._batch_worker and self._batch_worker.isRunning():
             self._batch_worker.stop()
@@ -381,12 +350,9 @@ class CaptionProcessor:
             self._batch_worker.progress.connect(handle_progress)
             self._batch_worker.result.connect(handle_result)
             
-            print("Starting batch worker for single image...")
             self._batch_worker.start()
-            print("Batch worker started successfully")
             
         except Exception as e:
-            print(f"Error starting batch worker: {str(e)}")
             if result_callback:
                 result_callback(json.dumps({
                     "error": str(e),
