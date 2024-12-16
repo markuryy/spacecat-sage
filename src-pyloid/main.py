@@ -15,13 +15,9 @@ from path_utils import (
 )
 import os
 import io
-import sys
 import json
-import signal
 import shutil
-import logging
 import base64
-import requests
 from PIL import Image
 from openai import OpenAI
 import sqlite3

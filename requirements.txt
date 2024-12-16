@@ -2,3 +2,4 @@ pyinstaller
 pyloid
 requests
 openai
+Pillow
