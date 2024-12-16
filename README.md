@@ -5,14 +5,14 @@ A desktop application for generating and editing image captions, with support fo
 > ⚠️ **Warning:** The current releases (as of `v0.2.1-alpha`) are unstable and *do* have bugs.
 
 I am in the middle of a major refactor and many things are currently broken, including:
-- [ ] vLLM/JoyCaption support
+- [x] Image virtualization
 - [ ] Large project stability
-- [ ] Image virtualization (WIP)
 - [ ] Drag and drop support
 
 Current basic functionality includes:
-- [x] Individual image captioning via OpenAI API
-- [x] Batch captioning via OpenAI API
+- [x] Individual image captioning
+- [x] Batch captioning
+- [x] OpenAI API (+JoyCaption via vLLM)
 - [x] Manual caption editing
 - [x] Import/export kohya dataset 
 - [x] Custom and preset captioning prompts
@@ -60,14 +60,14 @@ You can download the latest release [here](https://github.com/markuryy/spacecat-
 
 #### Unsigned Warnings
 
-On Windows, it's easy to bypass the security prompt on the installer by clicking "run anyway":
+On Windows, it's easy to bypass the security prompt on the installer by clicking "more info" and then "run anyway":
 
 > Windows protected your PC
 > Microsoft Defender SmartScreen prevented an unrecognized app from starting. Running this app might put your PC at risk.
 > App: spacecat sage.exe
 > Publisher: Unknown publisher
 
-On macos, there are [a few more steps](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) to open the app:
+On macOS, there are [a few more steps](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) to open the app:
 
 > Overriding security settings to open an app is the most common way that a Mac gets infected with malware.
 >
