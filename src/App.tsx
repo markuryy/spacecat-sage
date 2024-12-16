@@ -755,6 +755,12 @@ const App = () => {
           setGenerating(false);
         }
       } else if (result.caption) {
+        // Only clear cache if the image was modified during captioning
+        const file = files.find(f => f.name === result.image_name);
+        if (file && result.status === 'modified') { // Only clear if backend indicates image was modified
+          imageCache.delete(file.path);
+        }
+
         // Update caption for the current image if it matches
         if (currentImage?.name === result.image_name) {
           setEditingCaption(result.caption);

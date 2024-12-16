@@ -24,13 +24,17 @@ interface ImageThumbnailProps {
 
 const ImageThumbnail: React.FC<ImageThumbnailProps> = React.memo(({ path, alt, onClick, onLoad }) => {
   const [dataUrl, setDataUrl] = useState<string | null>(imageCache.get(path) ?? null);
-  const [loading, setLoading] = useState(!dataUrl);
+  const [loading, setLoading] = useState(!imageCache.has(path));
+  const mountedRef = useRef(true);
   
   useEffect(() => {
-    if (!dataUrl && !imageCache.has(path)) {
+    if (!dataUrl) {
       setLoading(true);
+      
       window.pyloid.FileAPI.get_image_data(path)
         .then(response => {
+          if (!mountedRef.current) return;
+          
           const result = JSON.parse(response);
           if (result.path) {
             imageCache.set(path, result.path);
@@ -38,11 +42,20 @@ const ImageThumbnail: React.FC<ImageThumbnailProps> = React.memo(({ path, alt, o
             onLoad?.(result.path);
           }
         })
-        .catch(console.error)
-        .finally(() => setLoading(false));
-    } else if (dataUrl) {
-      onLoad?.(dataUrl);
+        .catch(error => {
+          console.error('Error loading image:', error);
+          imageCache.delete(path);
+        })
+        .finally(() => {
+          if (mountedRef.current) {
+            setLoading(false);
+          }
+        });
     }
+
+    return () => {
+      mountedRef.current = false;
+    };
   }, [path, dataUrl, onLoad]);
 
   if (loading) {
@@ -60,10 +73,16 @@ const ImageThumbnail: React.FC<ImageThumbnailProps> = React.memo(({ path, alt, o
       className="w-full h-full rounded bg-neutral-800 object-cover"
       onClick={onClick}
       loading="lazy"
+      onError={() => {
+        imageCache.delete(path);
+        setDataUrl(null);
+      }}
     />
-  ) : null;
-}, (prevProps, nextProps) => {
-  return prevProps.path === nextProps.path && prevProps.alt === nextProps.alt;
+  ) : (
+    <div className="w-full h-full bg-neutral-800 rounded flex items-center justify-center">
+      <span className="text-xs text-neutral-400">Failed to load</span>
+    </div>
+  );
 });
 
 interface VirtualizedContentProps {
@@ -83,8 +102,36 @@ const VirtualizedContent: React.FC<VirtualizedContentProps> = React.memo(({
     count: items.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => itemHeight,
-    overscan: 5,
+    overscan: 10,
   });
+
+  useEffect(() => {
+    const virtualItems = virtualizer.getVirtualItems();
+    const preloadRange = 5;
+    
+    const itemsToPreload = virtualItems.reduce((acc, virtualRow) => {
+      const start = Math.max(0, virtualRow.index - preloadRange);
+      const end = Math.min(items.length, virtualRow.index + preloadRange);
+      
+      for (let i = start; i < end; i++) {
+        if (!imageCache.has(items[i].path)) {
+          acc.push(items[i].path);
+        }
+      }
+      return acc;
+    }, [] as string[]);
+
+    itemsToPreload.forEach(path => {
+      window.pyloid.FileAPI.get_image_data(path)
+        .then(response => {
+          const result = JSON.parse(response);
+          if (result.path) {
+            imageCache.set(path, result.path);
+          }
+        })
+        .catch(console.error);
+    });
+  }, [items, virtualizer.getVirtualItems()]);
 
   return (
     <div ref={parentRef} className="h-full overflow-y-auto">
