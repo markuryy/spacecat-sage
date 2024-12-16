@@ -2,22 +2,22 @@
 
 A desktop application for generating and editing image captions, with support for both OpenAI and JoyCaption.
 
-> ⚠️ **Warning:** The current releases (as of `v0.2.0-alpha`) are unstable and *do* have bugs.
+> ⚠️ **Warning:** The current releases (as of `v0.2.1-alpha`) are unstable and *do* have bugs.
 
 I am in the middle of a major refactor and many things are currently broken, including:
-- [x] Session persistence
-- [ ] Image editor saving
-- [ ] Batch captioning
 - [ ] vLLM/JoyCaption support
 - [ ] Large project stability
-- [ ] All prompts
 - [ ] Image virtualization (WIP)
 - [ ] Drag and drop support
 
 Current basic functionality includes:
 - [x] Individual image captioning via OpenAI API
+- [x] Batch captioning via OpenAI API
 - [x] Manual caption editing
 - [x] Import/export kohya dataset 
+- [x] Custom and preset captioning prompts
+- [x] Session persistence
+- [x] Image editor
 
 ## Features
 

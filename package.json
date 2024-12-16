@@ -1,13 +1,13 @@
 {
   "name": "spacecat-sage",
   "private": true,
-  "version": "0.2.0-alpha",
+  "version": "0.2.1-alpha",
   "type": "module",
   "scripts": {
     "dev": "run-script-os",
-    "dev:windows": "concurrently --raw --names \"front,pyloid\" \"npm run vite\" \".\\venv-pyloid\\Scripts\\python .\\src-pyloid\\main.py\"",
-    "dev:linux": "concurrently --raw --names \"front,pyloid\" \"npm run vite\" \"./venv-pyloid/bin/python ./src-pyloid/main.py\"",
-    "dev:macos": "concurrently --raw --names \"front,pyloid\" \"npm run vite\" \"./venv-pyloid/bin/python ./src-pyloid/main.py\"",
+    "dev:windows": "concurrently --raw --names \"front,pyloid\" \"bun run vite\" \".\\venv-pyloid\\Scripts\\python .\\src-pyloid\\main.py\"",
+    "dev:linux": "concurrently --raw --names \"front,pyloid\" \"bun run vite\" \"./venv-pyloid/bin/python ./src-pyloid/main.py\"",
+    "dev:macos": "concurrently --raw --names \"front,pyloid\" \"bun run vite\" \"./venv-pyloid/bin/python ./src-pyloid/main.py\"",
     "vite": "vite",
     "build": "tsc -b && vite build && run-script-os",
     "build:windows": ".\\venv-pyloid\\Scripts\\pyinstaller build-windows.spec",
