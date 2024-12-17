@@ -2,7 +2,7 @@
 
 A desktop application for generating and editing image captions, with support for both OpenAI and JoyCaption.
 
-> ⚠️ **Warning:** The current releases (as of `v0.2.1-alpha`) are unstable and *do* have bugs.
+> ⚠️ **Warning:** The current releases (as of `v0.2.3-alpha`) are unstable and *do* have bugs.
 
 I am in the middle of a major refactor and many things are currently broken, including:
 - [x] Image virtualization
