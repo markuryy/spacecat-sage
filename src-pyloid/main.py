@@ -966,6 +966,32 @@ class FileAPI(PyloidAPI):
         except Exception as e:
             return json.dumps({"error": str(e)})
 
+    @Bridge(str, result=str)
+    def delete_image(self, image_name):
+        """Delete an image and its caption from the session"""
+        self.ensure_initialized()
+        try:
+            if not self.session_dir:
+                return json.dumps({"error": "No active session"})
+
+            # Get the full path
+            image_path = os.path.join(self.session_dir, image_name)
+            
+            # Delete the image file
+            if os.path.exists(image_path):
+                os.remove(image_path)
+            
+            # Delete any associated caption from database
+            with self.get_db() as conn:
+                conn.execute("DELETE FROM captions WHERE image_name = ?", (image_name,))
+                conn.execute("DELETE FROM viewed_images WHERE image_name = ?", (image_name,))
+                conn.commit()
+            
+            return json.dumps({"success": True})
+        except Exception as e:
+            print(f"Error deleting image: {str(e)}")
+            return json.dumps({"error": str(e)})
+
 ####################################################################
 
 # Create a single instance of FileAPI

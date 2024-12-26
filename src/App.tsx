@@ -99,6 +99,7 @@ declare global {
         
         // Captions
         get_all_captions: () => Promise<string>;
+        delete_image: (image_name: string) => Promise<string>;
       };
     };
   }
@@ -964,6 +965,44 @@ const App = () => {
     return `${start}...${end}${ext}`;
   };
 
+  const handleDeleteImage = async () => {
+    if (!currentImage) return;
+
+    try {
+      const response = await window.pyloid.FileAPI.delete_image(currentImage.name);
+      const result = JSON.parse(response);
+      
+      if (result.error) {
+        console.error('Error deleting image:', result.error);
+        toast.error('Failed to delete image');
+        return;
+      }
+
+      // Remove from all file lists
+      setFiles(prev => prev.filter(f => f.name !== currentImage.name));
+      setCaptionedFiles(prev => prev.filter(f => f.name !== currentImage.name));
+      setUncaptionedFiles(prev => prev.filter(f => f.name !== currentImage.name));
+      
+      // Clear image cache
+      imageCache.delete(currentImage.path);
+      
+      // Move to next image if available
+      const currentIndex = files.findIndex(f => f.name === currentImage.name);
+      if (currentIndex < files.length - 1) {
+        setCurrentImage(files[currentIndex + 1]);
+      } else if (currentIndex > 0) {
+        setCurrentImage(files[currentIndex - 1]);
+      } else {
+        setCurrentImage(null);
+      }
+
+      toast.success('Image deleted');
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      toast.error('Failed to delete image');
+    }
+  };
+
   if (settings === null) {
     return (
       <div className="h-screen w-screen bg-neutral-900 text-white flex items-center justify-center">
@@ -1296,7 +1335,6 @@ const App = () => {
                           </Tooltip>
                         </TooltipProvider>
                       )}
-                      {/* NEW BUTTON TO OPEN EDITOR */}
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -1310,6 +1348,22 @@ const App = () => {
                           </TooltipTrigger>
                           <TooltipContent>
                             <p>Open image editor</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 rounded text-xs font-medium flex items-center gap-2"
+                              onClick={handleDeleteImage}
+                              disabled={generating}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Delete image</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
