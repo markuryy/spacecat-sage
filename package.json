@@ -1,7 +1,7 @@
 {
   "name": "spacecat-sage",
   "private": true,
-  "version": "0.2.3-alpha",
+  "version": "0.2.4-alpha",
   "type": "module",
   "scripts": {
     "dev": "run-script-os",
